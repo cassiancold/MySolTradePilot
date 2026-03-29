@@ -1,0 +1,4 @@
+python-telegram-bot==20.2
+solana==0.29.2
+solders==0.14.4
+base58
