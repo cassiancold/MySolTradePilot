@@ -1,5 +1,0 @@
-pip>=24.0
-python-telegram-bot==20.3
-solana==0.30.2
-solders==0.18.1
-base58==2.1.1
