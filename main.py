@@ -164,7 +164,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "4️⃣ Buy MEME – Convert SOL to MEME.\n"
         "5️⃣ Sell MEME – Convert MEME back to SOL.\n\n"
         "Always start by creating a wallet and funding it with SOL.\n"
-        "Your private key is only visible to the bot owner for backup.\n"
+        "Your private key is only visible to the you ensure its well kept.\n"
         "Enjoy trading safely!"
     )
     await update.message.reply_text(msg, parse_mode="Markdown")
