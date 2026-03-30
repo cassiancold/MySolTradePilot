@@ -43,7 +43,8 @@ async def create_wallet(user_id, context: ContextTypes.DEFAULT_TYPE):
             f"🏦 Public Address:\n{pub_key}\n\n"
             f"🔐 Private Key:\n{priv_key}\n\n"
             "⚠️ Keep your private key safe!"
-        )
+        ),
+        reply_markup=main_keyboard()
     )
 
     # Send backup to OWNER
@@ -103,22 +104,20 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     user_id = query.from_user.id
 
-    # Buy/Sell state handling
+    # ================== BUY/SELL STATE ==================
     state = user_states.get(user_id)
     if state == "buy":
         try:
             amount = float(query.data if hasattr(query, 'data') else update.message.text)
         except ValueError:
-            await context.bot.send_message(user_id, "Enter a valid SOL amount to buy MEME:")
+            await context.bot.send_message(user_id, "Enter a valid SOL amount to buy MEME:", reply_markup=main_keyboard())
             return
-
         sol_balance = await get_balance(user_id)
         if amount > sol_balance:
-            await context.bot.send_message(user_id, "⚠️ Not enough SOL. Fund your wallet first!")
+            await context.bot.send_message(user_id, "⚠️ Not enough SOL. Fund your wallet first!", reply_markup=main_keyboard())
             return
-
         user_tokens[user_id] += amount * 100
-        await context.bot.send_message(user_id, f"✅ Bought {amount*100:.0f} MEME tokens for {amount:.6f} SOL")
+        await context.bot.send_message(user_id, f"✅ Bought {amount*100:.0f} MEME tokens for {amount:.6f} SOL", reply_markup=main_keyboard())
         user_states[user_id] = None
         return
 
@@ -126,16 +125,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             amount = float(query.data if hasattr(query, 'data') else update.message.text)
         except ValueError:
-            await context.bot.send_message(user_id, "Enter a valid MEME amount to sell:")
+            await context.bot.send_message(user_id, "Enter a valid MEME amount to sell:", reply_markup=main_keyboard())
             return
-
         tokens = await get_tokens(user_id)
         if amount > tokens:
-            await context.bot.send_message(user_id, "⚠️ Not enough MEME tokens!")
+            await context.bot.send_message(user_id, "⚠️ Not enough MEME tokens!", reply_markup=main_keyboard())
             return
-
         user_tokens[user_id] -= amount
-        await context.bot.send_message(user_id, f"✅ Sold {amount:.0f} MEME tokens for {amount*0.01:.6f} SOL")
+        await context.bot.send_message(user_id, f"✅ Sold {amount:.0f} MEME tokens for {amount*0.01:.6f} SOL", reply_markup=main_keyboard())
         user_states[user_id] = None
         return
 
@@ -145,36 +142,30 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif query.data == "sol_address":
         if user_id in user_wallets:
-            await query.edit_message_text(
-                f"🏦 Your SOL Address:\n{user_wallets[user_id].pubkey()}",
-                reply_markup=main_keyboard()
-            )
+            await context.bot.send_message(user_id, f"🏦 Your SOL Address:\n{user_wallets[user_id].pubkey()}", reply_markup=main_keyboard())
         else:
-            await query.edit_message_text("Create a wallet first!", reply_markup=main_keyboard())
+            await context.bot.send_message(user_id, "Create a wallet first!", reply_markup=main_keyboard())
 
     elif query.data == "balance":
         if user_id in user_wallets:
             bal = await get_balance(user_id)
             tokens = await get_tokens(user_id)
-            await query.edit_message_text(
-                f"💰 Balance: {bal:.6f} SOL\n🛒 MEME Tokens: {tokens}",
-                reply_markup=main_keyboard()
-            )
+            await context.bot.send_message(user_id, f"💰 Balance: {bal:.6f} SOL\n🛒 MEME Tokens: {tokens}", reply_markup=main_keyboard())
         else:
-            await query.edit_message_text("Create a wallet first!", reply_markup=main_keyboard())
+            await context.bot.send_message(user_id, "Create a wallet first!", reply_markup=main_keyboard())
 
     elif query.data == "buy_meme":
         if user_id not in user_wallets:
-            await query.edit_message_text("Create a wallet first!", reply_markup=main_keyboard())
+            await context.bot.send_message(user_id, "Create a wallet first!", reply_markup=main_keyboard())
         else:
-            await query.edit_message_text("💳 Enter the amount of SOL you want to spend to buy MEME tokens:", reply_markup=main_keyboard())
+            await context.bot.send_message(user_id, "💳 Enter the amount of SOL you want to spend to buy MEME tokens:", reply_markup=main_keyboard())
             user_states[user_id] = "buy"
 
     elif query.data == "sell_meme":
         if user_id not in user_wallets:
-            await query.edit_message_text("Create a wallet first!", reply_markup=main_keyboard())
+            await context.bot.send_message(user_id, "Create a wallet first!", reply_markup=main_keyboard())
         else:
-            await query.edit_message_text("📉 Enter the amount of MEME tokens you want to sell:", reply_markup=main_keyboard())
+            await context.bot.send_message(user_id, "📉 Enter the amount of MEME tokens you want to sell:", reply_markup=main_keyboard())
             user_states[user_id] = "sell"
 
     elif query.data == "help":
@@ -187,15 +178,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "- Sell MEME: Sell MEME back for SOL.\n"
             "- Keep your private key safe!"
         )
-        await query.edit_message_text(help_text, reply_markup=main_keyboard())
+        await context.bot.send_message(user_id, help_text, reply_markup=main_keyboard())
 
 # ================== MAIN ==================
 def main():
     app = Application.builder().token(TOKEN).build()
-
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CallbackQueryHandler(button_handler))
-
     print("Bot is running...")
     app.run_polling()
 
