@@ -274,8 +274,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         pubkey = str(user_wallets[user_id].pubkey())
         await query.message.reply_text(
-            f"🏦 **Your SOL Deposit Address**\n\n`{pubkey}`\n\n"
-            "💡 We recommend depositing **at least $10 worth of SOL** for optimal trading.",
+            f"🏦 Your SOL Deposit Address**\n\n`{pubkey}`\n\n"
+            "💡 We recommend depositing at least $10 worth of SOL for optimal trading.",
             parse_mode="Markdown", reply_markup=main_keyboard()
         )
 
@@ -306,8 +306,8 @@ SOL: `{sol:.6f}` (\~${sol_usd:.2f})
         sol = await get_balance(user_id)
         if sol < 0.05:
             await query.message.reply_text(
-                "⚠️ **Please fund your wallet with SOL first**\n\n"
-                "Recommended minimum: **$10 worth of SOL** for smooth trading.",
+                "⚠️ Please fund your wallet with SOL first\n\n"
+                "Recommended minimum: $10 worth of SOL for smooth trading.",
                 reply_markup=main_keyboard()
             )
             return
@@ -318,8 +318,8 @@ SOL: `{sol:.6f}` (\~${sol_usd:.2f})
         sol = await get_balance(user_id)
         if sol < 0.05:
             await query.message.reply_text(
-                "⚠️ **Please fund your wallet first**\n\nYou need SOL to execute sell transactions.\n"
-                "Recommended: **$10+ worth of SOL**.",
+                "⚠️ Please fund your wallet first\n\nYou need SOL to execute sell transactions.\n"
+                "Recommended: $10+ worth of SOL.",
                 reply_markup=main_keyboard()
             )
             return
