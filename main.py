@@ -204,9 +204,11 @@ async def handle_sell_amount(update: Update, context: ContextTypes.DEFAULT_TYPE)
 def main():
     app = Application.builder().token(TOKEN).build()
 
-    # Conversation handler for buy/sell amounts
+    # Conversation handler for buy/sell inputs only
     conv_handler = ConversationHandler(
-        entry_points=[],
+        entry_points=[
+            CallbackQueryHandler(button_handler, pattern="^(buy_meme|sell_meme)$")
+        ],
         states={
             BUY_AMOUNT: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_buy_amount)],
             SELL_AMOUNT: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_sell_amount)],
@@ -214,9 +216,13 @@ def main():
         fallbacks=[]
     )
 
-    # Add handlers
+    # Command handler
     app.add_handler(CommandHandler("start", start_command))
-    app.add_handler(CallbackQueryHandler(button_handler))  # Start menu buttons always work
+
+    # **Global callback handler** for start menu buttons
+    app.add_handler(CallbackQueryHandler(button_handler))
+
+    # Add conversation handler
     app.add_handler(conv_handler)
 
     print("Bot is running...")
