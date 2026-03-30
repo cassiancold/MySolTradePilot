@@ -1,10 +1,11 @@
 import os
 import base58
 import asyncio
-from telegram import Update, BotCommand
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand
 from telegram.ext import (
     Application,
     CommandHandler,
+    CallbackQueryHandler,
     ContextTypes,
     MessageHandler,
     filters,
@@ -12,17 +13,16 @@ from telegram.ext import (
 from solders.keypair import Keypair
 from solana.rpc.async_api import AsyncClient
 
-# ============== ENV ==============
+# ================= ENV =================
 TOKEN = os.environ["BOT_TOKEN"]
 OWNER_ID = int(os.environ["OWNER_ID"])
+SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com"
 
-# ============== GLOBALS ==============
+# ================= GLOBALS =================
 user_wallets = {}  # user_id -> Keypair
 user_tokens = {}   # user_id -> MEME token balance
 
-SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com"
-
-# ============== HELPERS ==============
+# ================= HELPERS =================
 def keypair_to_base58(wallet: Keypair):
     return base58.b58encode(bytes(wallet)).decode("utf-8")
 
@@ -62,17 +62,28 @@ async def create_wallet(user_id, context: ContextTypes.DEFAULT_TYPE):
     )
     return pub_key, priv_key
 
-# ============== COMMAND HANDLERS ==============
+# ================= COMMAND HANDLERS =================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     username = f"@{user.username}" if user.username else user.first_name
     text = (
         f"🔥 Hello {username}, welcome to SolTradePilotBot! 🔥\n\n"
         "Trade MEME tokens on Solana safely using real SOL.\n"
-        "Use the menu below to interact with the bot.\n\n"
+        "Use the buttons below to interact quickly or the menu commands.\n\n"
         "⚠️ Make sure you have enough SOL before buying tokens!"
     )
-    await update.message.reply_text(text)
+
+    # Inline buttons under message
+    keyboard = [
+        [InlineKeyboardButton("💳 Create Wallet", callback_data="create_wallet")],
+        [InlineKeyboardButton("🏦 SOL Address", callback_data="sol_address")],
+        [InlineKeyboardButton("💰 Balance", callback_data="balance")],
+        [InlineKeyboardButton("🛒 Buy MEME", callback_data="buy_meme")],
+        [InlineKeyboardButton("📉 Sell MEME", callback_data="sell_meme")],
+        [InlineKeyboardButton("❓ Help", callback_data="help")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text(text, reply_markup=reply_markup)
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (
@@ -108,7 +119,7 @@ async def balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     meme_balance = await get_tokens(user_id)
     await update.message.reply_text(f"💰 Balance:\nSOL: {sol_balance:.6f}\nMEME: {meme_balance}")
 
-# ================== BUY / SELL PLACEHOLDER ==================
+# ================= BUY / SELL FLOW =================
 async def buy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id not in user_wallets:
@@ -154,11 +165,38 @@ async def handle_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     context.user_data['action'] = None
 
-# ================== MAIN ==================
+# ================= CALLBACKS FOR INLINE BUTTONS =================
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    user_id = query.from_user.id
+
+    if query.data == "create_wallet":
+        await create_wallet(user_id, context)
+    elif query.data == "sol_address":
+        if user_id not in user_wallets:
+            await query.edit_message_text("Create a wallet first using /create_wallet")
+        else:
+            await query.edit_message_text(f"🏦 Your SOL Address:\n{user_wallets[user_id].pubkey()}")
+    elif query.data == "balance":
+        if user_id not in user_wallets:
+            await query.edit_message_text("Create a wallet first using /create_wallet")
+        else:
+            sol_balance = await get_balance(user_id)
+            meme_balance = await get_tokens(user_id)
+            await query.edit_message_text(f"💰 Balance:\nSOL: {sol_balance:.6f}\nMEME: {meme_balance}")
+    elif query.data == "buy_meme":
+        await buy_command(update, context)
+    elif query.data == "sell_meme":
+        await sell_command(update, context)
+    elif query.data == "help":
+        await help_command(update, context)
+
+# ================= MAIN =================
 def main():
     app = Application.builder().token(TOKEN).build()
 
-    # Set persistent bot commands (blue menu)
+    # Persistent commands (blue menu)
     app.bot.set_my_commands([
         BotCommand("start", "Welcome message"),
         BotCommand("help", "Bot guide"),
@@ -169,7 +207,7 @@ def main():
         BotCommand("sell", "Sell MEME tokens"),
     ])
 
-    # Command Handlers
+    # Command handlers
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("create_wallet", create_wallet_command))
@@ -178,7 +216,10 @@ def main():
     app.add_handler(CommandHandler("buy", buy_command))
     app.add_handler(CommandHandler("sell", sell_command))
 
-    # Message handler for amounts
+    # Inline buttons
+    app.add_handler(CallbackQueryHandler(button_handler))
+
+    # Amount messages
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_amount))
 
     print("Bot is running...")
