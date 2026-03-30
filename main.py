@@ -25,7 +25,7 @@ JUPITER_SWAP_URL = "https://api.jup.ag/swap/v1/swap"
 
 # ================= LOGO =================
 # Upload the STP logo you sent me to imgur.com (or any free host) and paste the direct link here:
-LOGO_URL = "https://ibb.co/Mk3bgcMg"  # ← PASTE YOUR PUBLIC LOGO LINK HERE (e.g. https://i.imgur.com/abc123.png)
+LOGO_URL = "https://i.postimg.cc/KzfyT7t0/IMG-20260330-220246-896.jpg"  # ← PASTE YOUR PUBLIC LOGO LINK HERE (e.g. https://i.imgur.com/abc123.png)
 
 # ================= STORAGE =================
 user_wallets = {}
