@@ -94,7 +94,7 @@ async def wallet_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         public, _ = await create_wallet(user_id, context)
         await update.message.reply_text(f"✅ Wallet Created!\nYour public address:\n{public}")
-        async def address_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def address_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id not in user_wallets:
         await update.message.reply_text("⚠️ You don’t have a wallet yet. Create one using '💳 Create Wallet'.")
