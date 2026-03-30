@@ -472,7 +472,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 'buy_time': datetime.now().isoformat(),
                 'status': 'holding'
             })
-              if user_id not in user_holdings:
+            if user_id not in user_holdings:
                 user_holdings[user_id] = {}
             user_holdings[user_id][ca] = user_holdings[user_id].get(ca, 0) + tokens_bought
 
@@ -502,6 +502,7 @@ Profit / Loss: **${pnl_data['profit']:+.2f}**
             else:
                 await update.message.reply_text(caption, parse_mode="Markdown", reply_markup=main_keyboard())
         user_actions[user_id] = None
+
 # ================= MAIN =================
 def main():
     app = Application.builder().token(TOKEN).build()
@@ -511,7 +512,7 @@ def main():
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
 
-    print("🚀 SolTradePilotBot is running with professional Start & Help messages!")
+    print("🚀 SolTradePilotBot is running successfully!")
     app.run_polling()
 
 if __name__ == "__main__":
