@@ -1,6 +1,5 @@
 import os
 import base58
-import asyncio
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
@@ -40,7 +39,6 @@ async def get_tokens(user_id: int):
     return user_tokens.get(user_id, 0.0)
 
 async def create_wallet(user_id: int, context: ContextTypes.DEFAULT_TYPE):
-    global user_wallets, user_tokens
     wallet = Keypair()
     user_wallets[user_id] = wallet
     pub_key = str(wallet.pubkey())
@@ -91,12 +89,12 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (
         "💡 SolTradePilotBot Commands 💡\n\n"
         "/start - Welcome message\n"
+        "/help - Bot guide\n"
         "/create_wallet - Generate a Solana wallet\n"
         "/address - Show your wallet address\n"
         "/balance - Show your SOL and MEME balance\n"
         "/buy - Buy MEME tokens with SOL\n"
-        "/sell - Sell MEME tokens for SOL\n"
-        "/help - This guide"
+        "/sell - Sell MEME tokens for SOL"
     )
     await update.message.reply_text(text)
 
@@ -126,26 +124,31 @@ async def buy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user_id not in user_wallets:
         await update.message.reply_text("Create a wallet first using /create_wallet")
         return
-    await update.message.reply_text("💳 Enter the amount of SOL to spend for MEME tokens:")
     user_actions[user_id] = 'buy'
+    await update.message.reply_text("💳 Enter the amount of SOL to spend for MEME tokens:")
 
 async def sell_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = int(update.effective_user.id)
     if user_id not in user_wallets:
         await update.message.reply_text("Create a wallet first using /create_wallet")
         return
-    await update.message.reply_text("📉 Enter the amount of MEME tokens to sell:")
     user_actions[user_id] = 'sell'
+    await update.message.reply_text("📉 Enter the amount of MEME tokens to sell:")
 
 async def handle_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = int(update.effective_user.id)
     action = user_actions.get(user_id)
     if not action:
         return
+
     try:
         amount = float(update.message.text)
     except ValueError:
         await update.message.reply_text("Enter a valid number.")
+        return
+
+    if user_id not in user_wallets:
+        await update.message.reply_text("You must create a wallet first!")
         return
 
     if action == 'buy':
@@ -198,6 +201,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     app = Application.builder().token(TOKEN).build()
 
+    # Menu commands
     app.bot.set_my_commands([
         ("start", "Welcome message"),
         ("help", "Bot guide"),
@@ -208,6 +212,7 @@ def main():
         ("sell", "Sell MEME tokens"),
     ])
 
+    # Handlers
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("create_wallet", create_wallet_command))
