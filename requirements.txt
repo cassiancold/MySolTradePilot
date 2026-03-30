@@ -1,5 +1,5 @@
-python-telegram-bot==20.2
-solana==0.29.2
-solders==0.14.4
+python-telegram-bot==20.7
+requests==2.31.0
 base58==2.1.1
-httpx==0.23.3
+solana==0.30.2
+solders==0.18.1
