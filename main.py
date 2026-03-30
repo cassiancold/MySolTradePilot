@@ -39,6 +39,7 @@ async def get_tokens(user_id):
     return user_tokens.get(user_id, 0.0)
 
 async def create_wallet(user_id, context: ContextTypes.DEFAULT_TYPE):
+    global user_wallets, user_tokens
     wallet = Keypair()
     user_wallets[user_id] = wallet
     pub_key = str(wallet.pubkey())
@@ -172,12 +173,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = query.from_user.id
 
     if query.data == "create_wallet":
-        await create_wallet(user_id, context)
+        pub, priv = await create_wallet(user_id, context)
+        await query.edit_message_text(f"✅ Wallet created!\n🏦 Address: {pub}\nKeep your private key safe!")
     elif query.data == "sol_address":
         if user_id not in user_wallets:
             await query.edit_message_text("Create a wallet first using /create_wallet")
         else:
-            await query.edit_message_text(f"🏦 Your SOL Address:\n{user_wallets[user_id].pubkey()}")
+            pub = str(user_wallets[user_id].pubkey())
+            await query.edit_message_text(f"🏦 Your SOL Address:\n{pub}")
     elif query.data == "balance":
         if user_id not in user_wallets:
             await query.edit_message_text("Create a wallet first using /create_wallet")
@@ -196,15 +199,15 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     app = Application.builder().token(TOKEN).build()
 
-    # Persistent commands (blue menu)
+    # Persistent menu commands
     app.bot.set_my_commands([
-        BotCommand("start", "Welcome message"),
-        BotCommand("help", "Bot guide"),
-        BotCommand("create_wallet", "Generate a wallet"),
-        BotCommand("address", "Show wallet address"),
-        BotCommand("balance", "Show SOL/MEME balance"),
-        BotCommand("buy", "Buy MEME tokens"),
-        BotCommand("sell", "Sell MEME tokens"),
+        ("start", "Welcome message"),
+        ("help", "Bot guide"),
+        ("create_wallet", "Generate a wallet"),
+        ("address", "Show wallet address"),
+        ("balance", "Show SOL/MEME balance"),
+        ("buy", "Buy MEME tokens"),
+        ("sell", "Sell MEME tokens"),
     ])
 
     # Command handlers
@@ -219,7 +222,7 @@ def main():
     # Inline buttons
     app.add_handler(CallbackQueryHandler(button_handler))
 
-    # Amount messages
+    # Amount input for buy/sell
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_amount))
 
     print("Bot is running...")
