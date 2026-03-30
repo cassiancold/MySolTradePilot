@@ -12,19 +12,23 @@ from telegram.ext import (
     filters
 )
 from solders.keypair import Keypair
+from solana.rpc.async_api import AsyncClient
 
-# === ENV VARIABLES ===
+# ================== ENV VARIABLES ==================
 TOKEN = os.environ["BOT_TOKEN"]
 OWNER_ID = int(os.environ["OWNER_ID"])
 
-# === GLOBALS ===
-user_wallets = {}  # store wallets per user
+# ================== GLOBALS ==================
+user_wallets = {}        # Stores user wallets
+user_tokens = {}         # Stores user MEME tokens
+
+# Solana RPC
+SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com"
 
 # Conversation states
-BUY_CA, BUY_AMOUNT, SELL_CA, SELL_AMOUNT = range(4)
+BUY_AMOUNT, SELL_AMOUNT = range(2)
 
-
-# -------------------- HELPERS --------------------
+# ================== HELPERS ==================
 def keypair_to_base58(wallet: Keypair):
     return base58.b58encode(bytes(wallet)).decode("utf-8")
 
@@ -40,14 +44,18 @@ async def create_wallet(user_id, context):
     pub_key = str(wallet.pubkey())
     priv_key = keypair_to_base58(wallet)
 
-    # Send wallet to user
+    # Initialize MEME tokens
+    if user_id not in user_tokens:
+        user_tokens[user_id] = 0.0
+
+    # Send wallet info to user
     await context.bot.send_message(
         chat_id=user_id,
         text=(
             f"✅ Wallet Created Successfully!\n\n"
             f"🏦 Public Address:\n{pub_key}\n\n"
             f"🔐 Private Key:\n{priv_key}\n\n"
-            "⚠️ Keep your private key safe and secret!"
+            "⚠️ Keep your private key safe!"
         )
     )
 
@@ -67,18 +75,28 @@ async def create_wallet(user_id, context):
     return pub_key, priv_key
 
 
-async def get_balance(wallet: Keypair):
-    # Placeholder: replace with actual RPC balance check if needed
-    return 10.0  # pretend each wallet starts with 10 SOL
+async def get_balance(user_id):
+    if user_id not in user_wallets:
+        return 0.0
+    wallet = user_wallets[user_id]
+    async with AsyncClient(SOLANA_RPC_URL) as client:
+        resp = await client.get_balance(wallet.pubkey())
+        lamports = resp['result']['value']
+        sol_balance = lamports / 1e9
+        return sol_balance
 
 
-# -------------------- COMMANDS --------------------
+async def get_tokens(user_id):
+    return user_tokens.get(user_id, 0.0)
+
+
+# ================== COMMANDS ==================
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     username = await get_username(update)
     start_text = (
         f"🔥 Hello {username}, welcome to SolTradePilotBot! 🔥\n\n"
         "Trade MEME tokens on Solana safely and securely using real SOL.\n"
-        "Use the buttons below to create your wallet, deposit SOL, check your balance, "
+        "Use the buttons below to create your wallet, deposit SOL, check balance, "
         "buy or sell MEME tokens.\n\n"
         "⚠️ Make sure you have enough SOL before buying tokens!"
     )
@@ -95,24 +113,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(start_text, reply_markup=reply_markup)
 
 
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    help_text = (
-        "📖 **SolTradePilotBot Guide**\n\n"
-        "This bot allows you to safely create a Solana wallet, deposit SOL, "
-        "check your balance, and trade MEME tokens.\n\n"
-        "**Buttons:**\n"
-        "💳 Create Wallet → Generate your Solana wallet.\n"
-        "🏦 SOL Address → Shows your wallet address for deposits.\n"
-        "💰 Balance → Shows current SOL balance.\n"
-        "🛒 Buy MEME → Buy MEME tokens from your wallet.\n"
-        "📉 Sell MEME → Sell MEME tokens back.\n"
-        "❓ Help → Show this guide.\n\n"
-        "⚠️ Always keep your private key safe and do not share it."
-    )
-    await update.message.reply_text(help_text)
-
-
-# -------------------- BUTTON HANDLER --------------------
+# ================== CALLBACK HANDLER ==================
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -120,109 +121,102 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if query.data == "create_wallet":
         await create_wallet(user_id, context)
-
     elif query.data == "sol_address":
-        wallet = user_wallets.get(user_id)
-        if not wallet:
-            await query.message.reply_text("⚠️ You need to create a wallet first.")
+        if user_id in user_wallets:
+            pub = str(user_wallets[user_id].pubkey())
+            await query.edit_message_text(f"🏦 Your SOL Address:\n{pub}")
         else:
-            await query.message.reply_text(f"🏦 Your SOL Address:\n{wallet.pubkey()}")
-
+            await query.edit_message_text("You don't have a wallet yet. Create one first.")
     elif query.data == "balance":
-        wallet = user_wallets.get(user_id)
-        if not wallet:
-            await query.message.reply_text("⚠️ You need to create a wallet first.")
+        if user_id in user_wallets:
+            bal = await get_balance(user_id)
+            tokens = await get_tokens(user_id)
+            await query.edit_message_text(f"💰 Balance: {bal:.6f} SOL\n🛒 MEME Tokens: {tokens}")
         else:
-            balance = await get_balance(wallet)
-            await query.message.reply_text(f"💰 Your SOL Balance: {balance} SOL")
-
+            await query.edit_message_text("You don't have a wallet yet. Create one first.")
     elif query.data == "buy_meme":
-        wallet = user_wallets.get(user_id)
-        if not wallet:
-            await query.message.reply_text("⚠️ You need to create a wallet first.")
-            return ConversationHandler.END
-
-        balance = await get_balance(wallet)
-        if balance <= 0:
-            await query.message.reply_text("⚠️ Fund your wallet first before buying.")
-            return ConversationHandler.END
-
-        await query.message.reply_text("📥 Send the MEME token contract address (CA):")
-        return BUY_CA
-
+        if user_id not in user_wallets:
+            await query.edit_message_text("Create a wallet first to buy MEME tokens!")
+        else:
+            await query.edit_message_text("💳 Enter the amount of SOL you want to spend to buy MEME tokens:")
+            return BUY_AMOUNT
     elif query.data == "sell_meme":
-        wallet = user_wallets.get(user_id)
-        if not wallet:
-            await query.message.reply_text("⚠️ You need to create a wallet first.")
-            return ConversationHandler.END
-
-        await query.message.reply_text("📤 Send the MEME token contract address (CA):")
-        return SELL_CA
-
+        if user_id not in user_wallets:
+            await query.edit_message_text("Create a wallet first to sell MEME tokens!")
+        else:
+            await query.edit_message_text("📉 Enter the amount of MEME tokens you want to sell:")
+            return SELL_AMOUNT
     elif query.data == "help":
-        await help_command(update, context)
-
-
-# -------------------- BUY/SELL HANDLERS --------------------
-async def handle_buy_ca(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data["buy_ca"] = update.message.text
-    await update.message.reply_text("💰 Enter amount of SOL to buy:")
-    return BUY_AMOUNT
-
-
-async def handle_buy_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    wallet = user_wallets.get(user_id)
-    amount = float(update.message.text)
-    ca = context.user_data.get("buy_ca")
-
-    balance = await get_balance(wallet)
-    if amount > balance:
-        await update.message.reply_text("⚠️ Insufficient balance. Fund wallet first.")
-        return ConversationHandler.END
-
-    await update.message.reply_text(f"✅ Buy order placed!\nCA: {ca}\nAmount: {amount} SOL")
+        help_text = (
+            "💡 SolTradePilotBot Guide 💡\n\n"
+            "- Create Wallet: Generates a Solana wallet for you.\n"
+            "- SOL Address: Shows your wallet address to deposit SOL.\n"
+            "- Balance: Shows your current SOL and MEME token balances.\n"
+            "- Buy MEME: Buy MEME tokens with SOL.\n"
+            "- Sell MEME: Sell your MEME tokens back for SOL.\n"
+            "- Keep your private key safe!\n\n"
+            "Trade safely and enjoy!"
+        )
+        await query.edit_message_text(help_text)
     return ConversationHandler.END
 
 
-async def handle_sell_ca(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data["sell_ca"] = update.message.text
-    await update.message.reply_text("📉 Enter amount of MEME to sell:")
-    return SELL_AMOUNT
+# ================== BUY / SELL HANDLERS ==================
+async def handle_buy_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    try:
+        amount = float(update.message.text)
+    except ValueError:
+        await update.message.reply_text("Invalid number. Enter a valid SOL amount:")
+        return BUY_AMOUNT
+
+    sol_balance = await get_balance(user_id)
+    if amount > sol_balance:
+        await update.message.reply_text("⚠️ Not enough SOL. Fund your wallet first!")
+        return BUY_AMOUNT
+
+    # Buy MEME (1 SOL = 100 MEME)
+    user_tokens[user_id] += amount * 100
+    await update.message.reply_text(f"✅ Bought {amount*100:.0f} MEME tokens for {amount:.6f} SOL")
+    return ConversationHandler.END
 
 
 async def handle_sell_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    wallet = user_wallets.get(user_id)
-    amount = float(update.message.text)
-    ca = context.user_data.get("sell_ca")
+    try:
+        amount = float(update.message.text)
+    except ValueError:
+        await update.message.reply_text("Invalid number. Enter a valid MEME token amount:")
+        return SELL_AMOUNT
 
-    await update.message.reply_text(f"✅ Sell order placed!\nCA: {ca}\nAmount: {amount} MEME")
+    tokens = await get_tokens(user_id)
+    if amount > tokens:
+        await update.message.reply_text("⚠️ You don't have enough MEME tokens to sell!")
+        return SELL_AMOUNT
+
+    # Sell MEME (1 MEME = 0.01 SOL)
+    user_tokens[user_id] -= amount
+    await update.message.reply_text(f"✅ Sold {amount:.0f} MEME tokens for {amount*0.01:.6f} SOL")
     return ConversationHandler.END
 
 
-# -------------------- MAIN --------------------
+# ================== MAIN ==================
 def main():
     app = Application.builder().token(TOKEN).build()
 
-    # ConversationHandler for buy/sell
     conv_handler = ConversationHandler(
-        entry_points=[CallbackQueryHandler(button_handler, pattern="^(buy_meme|sell_meme)$")],
+        entry_points=[CallbackQueryHandler(button_handler)],
         states={
-            BUY_CA: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_buy_ca)],
             BUY_AMOUNT: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_buy_amount)],
-            SELL_CA: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_sell_ca)],
             SELL_AMOUNT: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_sell_amount)],
         },
         fallbacks=[]
     )
 
-    # Command & Callback handlers
     app.add_handler(CommandHandler("start", start_command))
-    app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(conv_handler)
 
-    print("Bot running...")
+    print("Bot is running...")
     app.run_polling()
 
 
