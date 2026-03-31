@@ -259,7 +259,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user_pending[user_id] = {"action": "await_txhash", "amount": amount}
             await query.message.reply_text(
                 f"✅ Selected: {amount} SOL\n\n"
-                "Send the SOL to your wallet address, then paste the **Transaction Hash** here.",
+                "Send the SOL to your wallet address, then paste the Transaction Hash here.",
                 reply_markup=main_keyboard(user_id)
             )
 
