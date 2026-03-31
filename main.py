@@ -258,7 +258,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             amount = float(data.split(":")[1])
             user_pending[user_id] = {"action": "await_txhash", "amount": amount}
             await query.message.reply_text(
-                f"✅ Selected: **{amount} SOL**\n\n"
+                f"✅ Selected: {amount} SOL\n\n"
                 "Send the SOL to your wallet address, then paste the **Transaction Hash** here.",
                 reply_markup=main_keyboard(user_id)
             )
@@ -314,7 +314,7 @@ SOL: `{sol:.6f}` (\~${sol_usd:.2f})
                 [InlineKeyboardButton("← Main Menu", callback_data="main_menu")]
             ])
             await query.message.reply_text(
-                "📊 **PNL Check**\n\n"
+                "📊 PNL Check\n\n"
                 "You haven't placed any trades yet.\n\n"
                 "Buy some MEME tokens first to start tracking your performance.\n\n"
                 "We wish you many green candles and profitable trades! 🚀🙏",
