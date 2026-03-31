@@ -290,7 +290,7 @@ SOL: `{sol:.6f}` (\~${sol_usd:.2f})
             return
         sol = await get_balance(user_id)
         if sol < 0.05:
-            await query.message.reply_text("⚠️ Please fund your wallet first (recommended $10+).", reply_markup=main_keyboard(user_id))
+            await query.message.reply_text("⚠️ Please fund your wallet first (recommended 0.2 sol+).", reply_markup=main_keyboard(user_id))
             return
         user_actions[user_id] = "await_ca_buy"
         await query.message.reply_text("📝 Paste the **Token CA**:", reply_markup=main_keyboard(user_id))
